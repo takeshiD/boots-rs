@@ -2,5 +2,11 @@
 name = "boots-rs"
 version = "0.1.0"
 edition = "2021"
+authors = ["tkcd"]
 
 [dependencies]
+clap = { version = "4.5.7", features = ["derive", "cargo"] }
+
+[[bin]]
+name = "boots"
+path = "src/main.rs"
