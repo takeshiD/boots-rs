@@ -2,7 +2,10 @@ mod bootsector;
 mod mbr;
 mod pbrfat;
 
-use bootsector::{BootSectorKind, infer};
+use bootsector::{BootSector, BootSectorKind, infer};
+use mbr::MBR;
+use pbrfat::PBRFat;
+
 use std::io::prelude::Read;
 use std::fs::File;
 use std::path::PathBuf;
@@ -25,7 +28,8 @@ fn main() {
     f.read_exact(&mut buf).expect("Failed file read");
     match infer(&buf) {
         BootSectorKind::MBR => {
-            unimplemented!()
+            let mbr = MBR::new(&buf);
+            mbr.print_info();
         },
         BootSectorKind::PBRFat => {
             unimplemented!()

@@ -1,6 +1,8 @@
 use std::io::prelude::Read;
 use std::io::{BufReader, BufRead, Cursor};
 
+use crate::BootSector;
+
 #[derive(Copy, Clone, Debug)]
 struct Partition {
     active: u8,
@@ -31,7 +33,7 @@ pub struct MBR{
 }
 
 impl MBR {
-    fn new(data: &[u8; 512]) -> Self {
+    pub fn new(data: &[u8; 512]) -> Self {
         let mut cur = Cursor::new(data);
         let mut boot_code = [0u8; 446];
         cur.read_exact(&mut boot_code).unwrap();
@@ -55,6 +57,31 @@ impl MBR {
             partition_table,
             boot_signature,
         }
+    }
+}
+
+impl BootSector for MBR {
+    fn print_info(&self) {
+        println!("\x1b[1mBootSectorType:\x1b[0m MBR");
+        for (i, part) in self.partition_table.iter().enumerate() {
+            println!("\x1b[1mPartition {i}:\x1b[0m");
+            println!("  {: <20}0x{:02X}", "Active flag", part.active);
+            let cylinder = ((part.chs_start[1] & 0xc0 << 2) | part.chs_start[2]) as u16; // 10bit
+            let head = part.chs_start[0]; // 8bit
+            let sector = part.chs_start[1] & 0x3f; // 6bit
+            println!("  {: <20}C:0x{cylinder:04X}, H:0x{head:02X}, S:0x{sector:02X}", "CHS Start");
+            println!("  {: <20}{}", "Partition Type", part.kind);
+            let cylinder = ((part.chs_end[1] & 0xc0 << 2) | part.chs_end[2]) as u16; // 10bit
+            let head = part.chs_end[0]; // 8bit
+            let sector = part.chs_end[1] & 0x3f; // 6bit
+            println!("  {: <20}C:0x{cylinder:04X}, H:0x{head:02X}, S:0x{sector:02X}", "CHS End");
+            println!("  {: <20}0x{:08X}", "LBA Start", part.lba_start);
+            println!("  {: <20}0x{:08X}", "Number of Sectors", part.size);
+        }
+        println!("\x1b[1m{: <22}\x1b[0m0x{:02X}", "BootSignature:",u16::from_le_bytes(self.boot_signature));
+    }
+    fn print_asm(&self) {
+        unimplemented!()
     }
 }
 
