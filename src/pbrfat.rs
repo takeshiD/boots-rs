@@ -63,6 +63,13 @@ impl Fat32 {
         }
     }
 }
+
+enum FATType {
+    FAT12,
+    FAT16,
+    FAT32,
+}
+
 pub struct PBRFat{
     bs_jmpboot: [u8; 3],
     bs_oemname: [u8; 8],
@@ -162,6 +169,7 @@ impl PBRFat {
         cur.read_exact(&mut _bs_volid).unwrap();
         fat32.bs_volid = u32::from_le_bytes(_bs_volid);
         cur.read_exact(&mut fat32.bs_vollab).unwrap();
+        println!("{:?}", fat32.bs_vollab);
         cur.read_exact(&mut fat32.bs_filsystype).unwrap();
         cur.read_exact(&mut fat32.boot_program).unwrap();
         let mut last_signature = [0u8; 2];
@@ -186,6 +194,27 @@ impl PBRFat {
             last_signature,
         }
     }
+    fn determine_fat_type(&self) -> FATType {
+        let root_dir_sectors = ((self.bpb_rootentcnt*32 + self.bpb_bytspersec - 1)/self.bpb_bytspersec) as usize;
+        let fat_size = if self.bpb_fatsz16 != 0 {
+            self.bpb_fatsz16 as usize
+        } else {
+            self.fat32.bpb_fatsz32 as usize
+        };
+        let total_sectors = if self.bpb_totsec16 != 0 {
+            self.bpb_totsec16 as usize
+        } else {
+            self.fat32.bpb_fatsz32 as usize
+        };
+        let data_sectors = total_sectors - ((self.bpb_rsvdseccnt as usize) + (self.bpb_numfats as usize)*fat_size + root_dir_sectors);
+        let count_of_clusters = data_sectors / (self.bpb_secperclus as usize);
+        println!("Determine FAT: fat_size={fat_size}, total_sectors={total_sectors}, data_sectors={data_sectors}, count_of_clusters={count_of_clusters}");
+        match count_of_clusters {
+               0..=4084     => FATType::FAT12,
+               4085..=65524 => FATType::FAT16,
+               _            => FATType::FAT32,
+       }
+    }
 }
 
 impl BootSector for PBRFat {
@@ -201,11 +230,37 @@ impl BootSector for PBRFat {
         println!("  {:<22}{}", "RootEntryCount", self.bpb_rootentcnt);
         println!("  {:<22}{} Sector", "TotalSectors(16bit)", self.bpb_totsec16);
         println!("  {:<22}{}", "Media", self.bpb_media);
-        println!("  {:<22}{} Sector", "FATSize", self.bpb_fatsz16);
+        println!("  {:<22}{} Sector", "FATSize(16bit)", self.bpb_fatsz16);
         println!("  {:<22}{} Sector", "TrackSize", self.bpb_secpertrk);
         println!("  {:<22}{}", "NumHeads", self.bpb_numheads);
         println!("  {:<22}{} Sector", "HiddenSector", self.bpb_hiddsec);
         println!("  {:<22}{} Sector", "TotalSectors(32bit)", self.bpb_totsec32);
+        match self.determine_fat_type() {
+            FATType::FAT12 | FATType::FAT16 => {
+                println!("\x1b[1mFAT Type:\x1b[0m  FAT12/FAT16");
+                println!("  {:<22}{}", "DriveNum", self.fat12_16.bs_drvnum);
+                println!("  {:<22}{}", "Reserved", self.fat12_16.bs_reserved1);
+                println!("  {:<22}{:02X}", "BootSignature", self.fat12_16.bs_bootsig);
+                println!("  {:<22}{}", "VolumeSerial", self.fat12_16.bs_volid);
+                println!("  {:<22}{}", "VolumeLabel", str::from_utf8(&self.fat12_16.bs_vollab).unwrap());
+                println!("  {:<22}{}", "FileSystemType", str::from_utf8(&self.fat12_16.bs_filsystype).unwrap());
+            },
+            FATType::FAT32 => {
+                println!("\x1b[1mFAT Type:\x1b[0m  FAT32");
+                println!("  {:<22}{} Sector", "FATSize(32bit)", self.fat32.bpb_fatsz32);
+                println!("  {:<22}0b{:016b}", "Flags", self.fat32.bpb_extflags);
+                println!("  {:<22}{}.{}", "Version", self.fat32.bpb_fsver[1], self.fat32.bpb_fsver[0]);
+                println!("  {:<22}{}", "RootDirCluster", self.fat32.bpb_rootclus);
+                println!("  {:<22}{}", "FSInfo", self.fat32.bpb_fsinfo);
+                println!("  {:<22}{}", "BackupBootSector", self.fat32.bpb_bkbootsec);
+                println!("  {:<22}{}", "DriveNum", self.fat32.bs_drvnum);
+                println!("  {:<22}{}", "Reserved", self.fat32.bs_reserved1);
+                println!("  {:<22}{:02X}", "BootSignature", self.fat32.bs_bootsig);
+                println!("  {:<22}{:08X}", "VolumeSerial", self.fat32.bs_volid);
+                println!("  {:<22}{}", "VolumeLabel", str::from_utf8(&self.fat32.bs_vollab).expect("Failed VolumeLabel: invalid utf-8 sequence"));
+                println!("  {:<22}{}", "FileSystemType", str::from_utf8(&self.fat32.bs_filsystype).expect("Failed FileSystemType: invalid utf-8 sequence"));
+            },
+        }
     }
     fn print_asm(&self) {
         unimplemented!()
