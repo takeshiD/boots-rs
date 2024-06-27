@@ -32,7 +32,8 @@ fn main() {
             mbr.print_info();
         },
         BootSectorKind::PBRFat => {
-            unimplemented!()
+            let pbr = PBRFat::new(&buf);
+            pbr.print_info();
         },
         BootSectorKind::Unknown => {
             eprintln!("Unknown bootsector type");
